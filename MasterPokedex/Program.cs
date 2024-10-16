@@ -1,8 +1,10 @@
 using MasterPokedex.Models;
+using MasterPokedex.Repositories;
+using MasterPokedex.Repositories.Interfaces;
+using MasterPokedex.Services;
+using MasterPokedex.Services.Interfaces;
 using MasterPokedex.Settings;
 using Microsoft.Extensions.Options;
-using System.Collections.Immutable;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<PokeApiSettings>(builder.Configuration);
+builder.Services.AddHttpClient<IPokemonRepository, PokemonRepository>();
+builder.Services.AddScoped<IPokemonService, PokemonService>();
 
 var app = builder.Build();
 
@@ -24,23 +28,14 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 
-app.MapGet("/pokemon/{name}", async (string name, IOptions<PokeApiSettings> settings) =>
+app.MapGet("/pokemon/{name}", async (string name, IPokemonService pokemonService) =>
 {
-    using var client = new HttpClient();
-    var baseUrl = settings.Value.PokeApiBaseUrl;
-    var url = $"{baseUrl}pokemon/{name}";
-
     try
     {
-        var response = await client.GetAsync(url);
+        var pokemon = await pokemonService.GetPokemonByNameAsync(name);
 
-        if (response.IsSuccessStatusCode)
+        if (pokemon is not null)
         {
-            var content = await response.Content.ReadAsStringAsync();
-            var pokemon = JsonSerializer.Deserialize<Pokemon>(content);
-
-            pokemon = pokemon is not null ? pokemon with { Url = url } : pokemon;
-
             return Results.Ok(pokemon);
         }
         else
@@ -48,7 +43,7 @@ app.MapGet("/pokemon/{name}", async (string name, IOptions<PokeApiSettings> sett
             return Results.NotFound("Pokemon not found");
         }
     }
-    catch (HttpRequestException ex)
+    catch (HttpRequestException)
     {
         return Results.StatusCode(500);
     }
